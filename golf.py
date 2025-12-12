@@ -1,120 +1,106 @@
-import streamlit as st
-from streamlit_drawable_canvas import st_canvas
-import numpy as np
-import math
-import time
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>City Golf Game</title>
+<style>
+  body { background: lightgreen; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+  #game { position: relative; width: 600px; height: 400px; border: 2px solid #333; }
+  .ball { position: absolute; width: 20px; height: 20px; border-radius: 50%; background: white; }
+  .hole { position: absolute; width: 20px; height: 20px; border-radius: 50%; background: yellow; }
+  .obstacle { position: absolute; background: grey; }
+  canvas { position: absolute; top:0; left:0; }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="canvas" width="600" height="400"></canvas>
+  <div id="ball" class="ball"></div>
+  <div id="hole" class="hole" style="left:550px; top:50px;"></div>
+  <div class="obstacle" style="left:200px; top:300px; width:50px; height:50px;"></div>
+  <div class="obstacle" style="left:350px; top:150px; width:50px; height:150px;"></div>
+  <div class="obstacle" style="left:100px; top:50px; width:50px; height:50px;"></div>
+</div>
 
-st.set_page_config(page_title="City Golf Game")
+<script>
+const ball = document.getElementById("ball");
+const hole = document.getElementById("hole");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const obstacles = Array.from(document.getElementsByClassName("obstacle"));
 
-# 地圖大小
-MAP_WIDTH = 600
-MAP_HEIGHT = 400
+let ballPos = {x:50, y:350};
+let isDragging = false;
+let startDrag = {x:0, y:0};
+let velocity = {x:0, y:0};
 
-BALL_RADIUS = 10
+function drawLine(from, to){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.beginPath();
+  ctx.moveTo(from.x + 10, from.y + 10);
+  ctx.lineTo(to.x, to.y);
+  ctx.strokeStyle = 'red';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
 
-# 初始化球位置
-if "ball_pos" not in st.session_state:
-    st.session_state.ball_pos = [50, 350]  # x, y
+function updateBall(){
+  ballPos.x += velocity.x;
+  ballPos.y += velocity.y;
 
-# 洞的位置
-hole_pos = [550, 50]
+  // 邊界
+  if(ballPos.x < 0 || ballPos.x > 580) velocity.x = 0;
+  if(ballPos.y < 0 || ballPos.y > 380) velocity.y = 0;
 
-# 建築障礙 [x1, y1, x2, y2]
-obstacles = [
-    [200, 300, 250, 350],
-    [350, 150, 400, 300],
-    [100, 50, 150, 100]
-]
+  // 障礙物碰撞
+  obstacles.forEach(o=>{
+    let ox = o.offsetLeft, oy = o.offsetTop, ow = o.offsetWidth, oh = o.offsetHeight;
+    if(ballPos.x+10 > ox && ballPos.x < ox+ow && ballPos.y+10 > oy && ballPos.y < oy+oh){
+      velocity.x = 0;
+      velocity.y = 0;
+    }
+  });
 
-# 力量和方向
-if "drag_start" not in st.session_state:
-    st.session_state.drag_start = None
+  // 過洞判定
+  let hx = hole.offsetLeft, hy = hole.offsetTop;
+  if(Math.hypot(ballPos.x - hx, ballPos.y - hy) < 20){
+    velocity.x = 0;
+    velocity.y = 0;
+    alert("🎉 球進洞了！");
+  }
 
-# Canvas: 用來畫輔助線
-canvas_result = st_canvas(
-    fill_color="rgba(0,0,0,0)",
-    stroke_width=2,
-    stroke_color="red",
-    background_color="lightgreen",
-    width=MAP_WIDTH,
-    height=MAP_HEIGHT,
-    drawing_mode="line",
-    key="canvas",
-    initial_drawing=None
-)
+  ball.style.left = ballPos.x + "px";
+  ball.style.top = ballPos.y + "px";
 
-# 取得滑鼠拖曳事件
-if canvas_result.json_data is not None:
-    objs = canvas_result.json_data["objects"]
-    if len(objs) > 0:
-        line = objs[-1]
-        x0, y0 = line["left"], line["top"]
-        x1, y1 = x0 + line["width"], y0 + line["height"]
+  if(velocity.x != 0 || velocity.y != 0){
+    requestAnimationFrame(updateBall);
+  }
+}
 
-        # 計算方向向量和距離
-        dx = x1 - x0
-        dy = y1 - y0
-        distance = math.hypot(dx, dy)
-        if distance > 0:
-            dx /= distance
-            dy /= distance
+// 監聽滑鼠拖曳
+canvas.addEventListener("mousedown", (e)=>{
+  if(Math.hypot(e.offsetX - ballPos.x, e.offsetY - ballPos.y) < 20){
+    isDragging = true;
+    startDrag = {x:e.offsetX, y:e.offsetY};
+  }
+});
 
-            # 球沿方向滾動
-            steps = int(distance / 5)
-            bx, by = st.session_state.ball_pos
-            for _ in range(steps):
-                nx, ny = bx + dx*5, by + dy*5
-                # 邊界檢查
-                if nx < BALL_RADIUS or nx > MAP_WIDTH-BALL_RADIUS:
-                    break
-                if ny < BALL_RADIUS or ny > MAP_HEIGHT-BALL_RADIUS:
-                    break
-                # 障礙物檢查
-                hit_obstacle = False
-                for obs in obstacles:
-                    if obs[0] <= nx <= obs[2] and obs[1] <= ny <= obs[3]:
-                        hit_obstacle = True
-                        break
-                if hit_obstacle:
-                    break
-                bx, by = nx, ny
-                # 畫動畫
-                st.session_state.ball_pos = [bx, by]
-                draw_html = f"""
-                <div style="position:relative;width:{MAP_WIDTH}px;height:{MAP_HEIGHT}px;background-color:lightgreen;">
-                    <div style="
-                        position:absolute;width:{BALL_RADIUS*2}px;height:{BALL_RADIUS*2}px;
-                        border-radius:50%;background-color:white;
-                        left:{bx-BALL_RADIUS}px;top:{by-BALL_RADIUS}px;"></div>
-                    <div style="
-                        position:absolute;width:{BALL_RADIUS*2}px;height:{BALL_RADIUS*2}px;
-                        border-radius:50%;background-color:yellow;
-                        left:{hole_pos[0]-BALL_RADIUS}px;top:{hole_pos[1]-BALL_RADIUS}px;"></div>
-                    {"".join([f'<div style="position:absolute;background-color:grey;left:{obs[0]}px;top:{obs[1]}px;width:{obs[2]-obs[0]}px;height:{obs[3]-obs[1]}px;"></div>' for obs in obstacles])}
-                </div>
-                """
-                st.markdown(draw_html, unsafe_allow_html=True)
-                time.sleep(0.01)
+canvas.addEventListener("mousemove", (e)=>{
+  if(isDragging){
+    drawLine({x:ballPos.x, y:ballPos.y}, {x:e.offsetX, y:e.offsetY});
+  }
+});
 
-# 畫靜態球、洞、建築
-bx, by = st.session_state.ball_pos
-st.markdown(
-    f"""
-    <div style="position:relative;width:{MAP_WIDTH}px;height:{MAP_HEIGHT}px;background-color:lightgreen;">
-        <div style="
-            position:absolute;width:{BALL_RADIUS*2}px;height:{BALL_RADIUS*2}px;
-            border-radius:50%;background-color:white;
-            left:{bx-BALL_RADIUS}px;top:{by-BALL_RADIUS}px;"></div>
-        <div style="
-            position:absolute;width:{BALL_RADIUS*2}px;height:{BALL_RADIUS*2}px;
-            border-radius:50%;background-color:yellow;
-            left:{hole_pos[0]-BALL_RADIUS}px;top:{hole_pos[1]-BALL_RADIUS}px;"></div>
-        {"".join([f'<div style="position:absolute;background-color:grey;left:{obs[0]}px;top:{obs[1]}px;width:{obs[2]-obs[0]}px;height:{obs[3]-obs[1]}px;"></div>' for obs in obstacles])}
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
-# 判定是否進洞
-if math.hypot(bx-hole_pos[0], by-hole_pos[1]) < BALL_RADIUS*2:
-    st.success("🎉 球進洞了！你贏了！")
+canvas.addEventListener("mouseup", (e)=>{
+  if(isDragging){
+    isDragging = false;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    let dx = startDrag.x - e.offsetX;
+    let dy = startDrag.y - e.offsetY;
+    velocity = {x: dx/5, y: dy/5};
+    requestAnimationFrame(updateBall);
+  }
+});
+</script>
+</body>
+</html>
