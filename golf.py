@@ -1,84 +1,84 @@
 import streamlit as st
-import random
+import math
 import time
 
-# --------------------
-# 初始化 session state
-# --------------------
-if "player_x" not in st.session_state:
-    st.session_state.player_x = 4
-    st.session_state.enemy_x = random.randint(0, 8)
-    st.session_state.enemy_y = 0
-    st.session_state.score = 0
-    st.session_state.game_over = False
+# -----------------------------
+# Initialize game state
+# -----------------------------
+if "ball_x" not in st.session_state:
+    st.session_state.ball_x = 4
+    st.session_state.ball_y = 7
+    st.session_state.hole_x = 4
+    st.session_state.hole_y = 1
+    st.session_state.angle = 90   # degrees
+    st.session_state.power = 1
+    st.session_state.strokes = 0
+    st.session_state.moving = False
 
-# --------------------
-# 標題
-# --------------------
-st.title("🎮 Streamlit Dodge Game")
+st.title("⛳ Streamlit Mini Golf")
 
-# --------------------
-# 控制按鈕
-# --------------------
-col1, col2, col3 = st.columns(3)
+# -----------------------------
+# Controls
+# -----------------------------
+c1, c2, c3 = st.columns(3)
 
-with col1:
-    if st.button("⬅️"):
-        st.session_state.player_x = max(0, st.session_state.player_x - 1)
+with c1:
+    if st.button("⬅️ Angle"):
+        st.session_state.angle = max(0, st.session_state.angle - 10)
 
-with col3:
-    if st.button("➡️"):
-        st.session_state.player_x = min(8, st.session_state.player_x + 1)
+with c2:
+    if st.button("➡️ Angle"):
+        st.session_state.angle = min(180, st.session_state.angle + 10)
 
-# --------------------
-# 遊戲邏輯
-# --------------------
-if not st.session_state.game_over:
-    st.session_state.enemy_y += 1
+with c3:
+    if st.button("💥 Hit"):
+        st.session_state.moving = True
+        st.session_state.strokes += 1
 
-    if st.session_state.enemy_y > 8:
-        st.session_state.enemy_y = 0
-        st.session_state.enemy_x = random.randint(0, 8)
-        st.session_state.score += 1
+st.slider("Power", 1, 5, key="power")
+st.write(f"🎯 Angle: {st.session_state.angle}°")
+st.write(f"⛳ Strokes: {st.session_state.strokes}")
 
-    # 碰撞判定
-    if (
-        st.session_state.enemy_y == 8
-        and st.session_state.enemy_x == st.session_state.player_x
-    ):
-        st.session_state.game_over = True
+# -----------------------------
+# Move ball
+# -----------------------------
+if st.session_state.moving:
+    rad = math.radians(st.session_state.angle)
+    dx = round(math.cos(rad))
+    dy = -round(math.sin(rad))
 
-# --------------------
-# 畫遊戲畫面（9x9）
-# --------------------
-grid = [["⬜" for _ in range(9)] for _ in range(9)]
+    for _ in range(st.session_state.power):
+        st.session_state.ball_x += dx
+        st.session_state.ball_y += dy
 
-# 玩家
-grid[8][st.session_state.player_x] = "🟦"
+        st.session_state.ball_x = max(0, min(8, st.session_state.ball_x))
+        st.session_state.ball_y = max(0, min(8, st.session_state.ball_y))
 
-# 敵人
-if not st.session_state.game_over:
-    grid[st.session_state.enemy_y][st.session_state.enemy_x] = "🟥"
-
-for row in grid:
-    st.write("".join(row))
-
-# --------------------
-# 分數
-# --------------------
-st.subheader(f"Score: {st.session_state.score}")
-
-# --------------------
-# Game Over
-# --------------------
-if st.session_state.game_over:
-    st.error("💥 GAME OVER")
-    if st.button("🔄 Restart"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
+        time.sleep(0.15)
         st.experimental_rerun()
 
-# 自動刷新（動畫）
-time.sleep(0.4)
-st.experimental_rerun()
+    st.session_state.moving = False
 
+# -----------------------------
+# Draw field (9x9)
+# -----------------------------
+field = [["⬜" for _ in range(9)] for _ in range(9)]
+
+field[st.session_state.hole_y][st.session_state.hole_x] = "🕳️"
+field[st.session_state.ball_y][st.session_state.ball_x] = "⚪"
+
+for row in field:
+    st.write("".join(row))
+
+# -----------------------------
+# Win condition
+# -----------------------------
+if (
+    st.session_state.ball_x == st.session_state.hole_x
+    and st.session_state.ball_y == st.session_state.hole_y
+):
+    st.success(f"🏆 Hole completed in {st.session_state.strokes} strokes!")
+    if st.button("🔄 New Hole"):
+        for k in list(st.session_state.keys()):
+            del st.session_state[k]
+        st.experimental_rerun()
